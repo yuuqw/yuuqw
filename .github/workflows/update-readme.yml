@@ -1,0 +1,64 @@
+name: Update README with Language Stats
+
+on:
+  schedule:
+    # Cập nhật mỗi ngày lúc 0 giờ UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch: # Kích hoạt thủ công nếu cần
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository content
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.x
+
+    - name: Install dependencies
+      run: pip install requests
+
+    - name: Generate language stats and update README
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        import os
+        import requests
+
+        username = os.getenv("GITHUB_ACTOR")
+        token = os.getenv("GITHUB_TOKEN")
+        url = f"https://api.github.com/user/repos?per_page=100"
+        
+        response = requests.get(url, auth=(username, token))
+        repos = response.json()
+
+        language_count = {}
+        total_bytes = 0
+
+        for repo in repos:
+            lang_url = repo["languages_url"]
+            lang_response = requests.get(lang_url, auth=(username, token)).json()
+            
+            for lang, bytes_used in lang_response.items():
+                language_count[lang] = language_count.get(lang, 0) + bytes_used
+                total_bytes += bytes_used
+
+        readme_content = "# 🛠️ Ngôn ngữ sử dụng trong các repository\n\n"
+        for lang, bytes_used in language_count.items():
+            percentage = (bytes_used / total_bytes) * 100
+            readme_content += f"- **{lang}**: {percentage:.2f}%\n"
+
+        with open("README.md", "w", encoding="utf-8") as f:
+            f.write(readme_content)
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+        git add README.md
+        git commit -m "Update README with language stats"
+        git push
